@@ -1,0 +1,31 @@
+---
+# CODER CONFIG
+MODEL : "gemini-1.5-flash"
+SYSTEM_INSTRUCTION : > 
+  You're an expert Data Scientist coder.
+GENERATION_CONFIG : {
+  temperature : 1,
+  top_p : 0.95,
+  top_k : 40,
+  max_output_tokens : 8192,
+  response_mime_type : "text/plain" 
+}
+SAFETY_CONFIG : [
+  {
+      category : "HARM_CATEGORY_HARASSMENT",
+      threshold : "BLOCK_NONE"
+  },
+  {
+      category : "HARM_CATEGORY_HATE_SPEECH",
+      threshold : "BLOCK_NONE"
+  },
+  {
+      category: "HARM_CATEGORY_SEXUALLY_EXPLICIT",
+      threshold: "BLOCK_NONE"
+  },
+  {
+      category: "HARM_CATEGORY_DANGEROUS_CONTENT",
+      threshold: "BLOCK_NONE"
+  }
+]
+...
