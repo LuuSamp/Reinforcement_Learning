@@ -9,6 +9,7 @@ from sklearn.neighbors import KNeighborsClassifier
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.datasets import load_wine
+from sklearn.model_selection import train_test_split
 
 class ClassifierChoices(BaseModel):
     algorithm: Literal["LogisticRegression", "SVM", "RandomForest", "DecisionTree", "KNN"]
@@ -31,7 +32,7 @@ class RandomForestParams(BaseModel):
     max_depth: Optional[int] = None
     min_samples_split: int = 2
     min_samples_leaf: int = 1
-    max_features: Literal["auto", "sqrt", "log2"] = "auto"
+    max_features: Literal["sqrt", "log2", None] = None
 
 class DecisionTreeParams(BaseModel):
     criterion: Literal["gini", "entropy"] = "gini"
@@ -132,12 +133,23 @@ class Coder(Agent):
     def set_normalization(self):
         prompt = "Escolha o tipo de normalização a ser aplicada:"
         return self.chat(prompt, format=NormalizationChoices.model_json_schema())
+    
+    def fit(self, X, y):
+        self.classifier = self.classifier(**self.params)
+        self.classifier.fit(X, y)
 
+    def predict(self, X):
+        return self.classifier.predict(X)
 
 wine_df = load_wine()
 X = wine_df.data
 y = wine_df.target
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
-coder = Coder(X, y)
+coder = Coder(X_train, y_train)
 coder.set_classifier()
 coder.set_params()
+
+coder.fit(X_train, y_train)
+y_pred = coder.predict(X_test)
+print(y_pred)
