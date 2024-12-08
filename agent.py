@@ -92,22 +92,29 @@ class Coder(Agent):
         self.X_copy = X.copy()
         self.classifier_name = "RandomForest"
         self.classifier = CLASSIFIERS[self.classifier_name]
-        self.params = CLASSIFIERS_PARAMS[self.classifier_name]()
+        self.params = CLASSIFIERS_PARAMS[self.classifier_name]().model_dump()
 
     def set_classifier(self):
         prompt = f"""Com base nos resultados anteriores, escolha um dos seguintes classificadores:
                         {' '.join(CLASSIFIERS.keys())}
                         Classificador anterior: {self.classifier_name}
                         Se as métricas não forem boas, você pode escolher outro classificador.
-                        
+
                         F1 Score: 0.5
                         Acurácia: 0.7
                         Precisão: 0.6
                         Recall: 0.4
                   """
         response = self.chat(prompt, format=ClassifierChoices.model_json_schema())
+        response = ClassifierChoices.model_validate_json(response)
         
+        self.classifier_name = response.algorithm
+        self.classifier = CLASSIFIERS[self.classifier_name]
+        self.params = CLASSIFIERS_PARAMS[self.classifier_name]().model_dump()
+
         print(response)
+        print(self.params)
+
         
     def set_params(self):
         prompt = f"""Com base nos seguintes resultados, escolha um dos seguintes classificadores:
@@ -115,12 +122,16 @@ class Coder(Agent):
                      ...
                   """
         
-        return self.chat(prompt, format=CLASSIFIERS_PARAMS[self.classifier].model_json_schema())
+        response = self.chat(prompt, format=CLASSIFIERS_PARAMS[self.classifier_name].model_json_schema())
+        response = CLASSIFIERS_PARAMS[self.classifier_name].model_validate_json(response)
+
+        self.params = response.model_dump()
+        
+        print(self.params)
 
     def set_normalization(self):
         prompt = "Escolha o tipo de normalização a ser aplicada:"
         return self.chat(prompt, format=NormalizationChoices.model_json_schema())
-
 
 
 wine_df = load_wine()
@@ -129,3 +140,4 @@ y = wine_df.target
 
 coder = Coder(X, y)
 coder.set_classifier()
+coder.set_params()
