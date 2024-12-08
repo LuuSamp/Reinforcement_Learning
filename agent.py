@@ -2,72 +2,23 @@ from pprint import pprint
 from typing import List, Optional, Literal
 
 from ollama import chat
-from pydantic import BaseModel, Field, field_validator
 
-from sklearn.svm import SVC
-from sklearn.linear_model import LogisticRegression
-from sklearn.neighbors import KNeighborsClassifier
-from sklearn.tree import DecisionTreeClassifier
-from sklearn.ensemble import RandomForestClassifier
+from formats import *
+
 from sklearn.datasets import load_wine
 from sklearn.model_selection import train_test_split
-
-class ClassifierChoices(BaseModel):
-    algorithm: Literal["LogisticRegression", "SVM", "RandomForest", "DecisionTree", "KNN"]
-
-class NormalizationChoices(BaseModel):
-    normalization: Literal["minmax", "standard", "robust", "quantile", "power", "maxabs"]
-
-class LogisticRegressionParams(BaseModel):
-    penalty: Literal["l1", "l2", "elasticnet", None] = "l2"
-    C: float = 1.0
-    solver: Literal["newton-cg", "lbfgs", "liblinear", "sag", "saga"] = "lbfgs"
-
-class SVMParams(BaseModel):
-    C: float = 1.0
-    kernel: Literal["linear", "poly", "rbf", "sigmoid", "precomputed"] = "rbf"
-    degree: int = 3
-
-class RandomForestParams(BaseModel):
-    criterion: Literal["gini", "entropy"] = "gini"
-    max_depth: Optional[int] = None
-    min_samples_split: int = 2
-    min_samples_leaf: int = 1
-    max_features: Literal["sqrt", "log2", None] = None
-
-class DecisionTreeParams(BaseModel):
-    criterion: Literal["gini", "entropy"] = "gini"
-    splitter: Literal["best", "random"] = "best"
-    max_depth: Optional[int] = None
-    min_samples_split: int = 2
-    min_samples_leaf: int = 1
-    max_features: Optional[int] = None
-
-class KNNParams(BaseModel):
-    n_neighbors: int = 5
-    weights: Literal["uniform", "distance"] = "uniform"
-    algorithm: Literal["auto", "ball_tree", "kd_tree", "brute"] = "auto"
-
-CLASSIFIERS = {
-"SVM": SVC,
-"LogisticRegression": LogisticRegression,
-"RandomForest": RandomForestClassifier,
-"DecisionTree": DecisionTreeClassifier,
-"KNN": KNeighborsClassifier
-}
-CLASSIFIERS_PARAMS = {
-    "SVM": SVMParams,
-    "LogisticRegression": LogisticRegressionParams,
-    "RandomForest": RandomForestParams,
-    "DecisionTree": DecisionTreeParams,
-    "KNN": KNNParams
-}
+from random import random
 
 class Agent:
     def __init__(self, model="llama3.2", temperature=1.0):
         self.model = model
         self.temperature = temperature
-        self.history = []
+        self.history = [
+            {
+                "role": "user",
+                "content": "Estamos buscando pelo melhor classificador e parâmetros para classificar um único dataset. Considere o histórico de tentativas a seguir para tomar uma decisão:"
+            }
+        ]
         self.system_instructions = ""
         self.max_history = 10
 
@@ -87,8 +38,8 @@ class Agent:
             options={"temperature": self.temperature}
         )
         self.history.append(response["message"])
-        if len(self.history) > self.max_history:
-            self.history.pop(0)
+        if len(self.history) > self.max_history + 1:
+            self.history.pop(1)
         return response["message"]["content"]
 
 class Coder(Agent):
@@ -100,41 +51,54 @@ class Coder(Agent):
         self.classifier_name = "RandomForest"
         self.classifier = CLASSIFIERS[self.classifier_name]
         self.params = CLASSIFIERS_PARAMS[self.classifier_name]().model_dump()
+        self.latest_feedback = ""
+        self.epsilon = 0.05
 
     def set_classifier(self):
-        prompt = f"""Com base nos resultados anteriores, escolha um dos seguintes classificadores:
+        
+        if random() < self.epsilon:
+            prompt = f"""
+                        Com base nos resultados anteriores, escolha um dos seguintes classificadores:
                         {' '.join(CLASSIFIERS.keys())}
-                        Classificador anterior: {self.classifier_name}
-                        Se as métricas não forem boas, você pode escolher outro classificador.
-
-                        F1 Score: 0.5
-                        Acurácia: 0.7
-                        Precisão: 0.6
-                        Recall: 0.4
-                  """
+                        ESCOLHA UM CLASSIFICADOR NOVO OU POUCO USADO PARA EXPLORAR NOVAS POSSIBILIDADES.
+                    """
+                    
+        else:          
+            prompt = f""" Com base nos resultados anteriores, escolha um dos seguintes classificadores:
+                        {' '.join(CLASSIFIERS.keys())}
+                        Se as métricas de avaliação não foram satisfatórias, escolha um classificador diferente.
+                    """
+        
         response = self.chat(prompt, format=ClassifierChoices.model_json_schema())
         response = ClassifierChoices.model_validate_json(response)
         
         self.classifier_name = response.algorithm
         self.classifier = CLASSIFIERS[self.classifier_name]
         self.params = CLASSIFIERS_PARAMS[self.classifier_name]().model_dump()
-
-        print(response)
-        print(self.params)
+        
+        # print(response)
+        # print(self.params)
 
         
     def set_params(self):
-        prompt = f"""Com base nos seguintes resultados, escolha um dos seguintes classificadores:
-                     Classificador anterior: {self.classifier}
-                     ...
-                  """
+        if random() < self.epsilon:
+            prompt = f"""
+                            Com base nos resultados anteriores, escolha os seguintes parâmetros para o classificador {self.classifier_name}:
+                            {' '.join(CLASSIFIERS_PARAMS[self.classifier_name].model_json_schema().keys())}
+                            ESCOLHA PARÂMETROS POUCO USADOS PARA EXPLORAR NOVAS POSSIBILIDADES.
+                    """
+                    
+        else:          
+            prompt = f""" Com base nos resultados anteriores, escolha os seguintes parâmetros para o classificador {self.classifier_name}:
+                            {' '.join(CLASSIFIERS_PARAMS[self.classifier_name].model_json_schema().keys())}
+                    """
         
         response = self.chat(prompt, format=CLASSIFIERS_PARAMS[self.classifier_name].model_json_schema())
         response = CLASSIFIERS_PARAMS[self.classifier_name].model_validate_json(response)
 
         self.params = response.model_dump()
         
-        print(self.params)
+        #print(self.params)
 
     def set_normalization(self):
         prompt = "Escolha o tipo de normalização a ser aplicada:"
@@ -147,25 +111,65 @@ class Coder(Agent):
     def predict(self, X):
         return self.classifier.predict(X)
     
+    def get_feedback(self, feedback):
+        feedback_text = f"""
+                        Dados do último teste:
+                        - Classificador: {self.classifier_name}
+                        - Parâmetros: {self.params}
+                        - F1: {feedback["f1"]}
+                        - Recall: {feedback["recall"]}
+                        - Precisão: {feedback["precision"]}
+                        - Acurácia: {feedback["accuracy"]}
+                        - Nota do revisor: {feedback["reviewer_feedback"]}
+                        """
+        self.latest_feedback = feedback_text
+        feedback = {
+            "role": "user",
+            "content": f"""
+                        {self.system_instructions}
+                           
+                        {feedback_text}
+                        """
+        }
+        if len(self.history) > self.max_history+1:
+            self.history.pop(1)
+        self.history.append(feedback)
+    
 class Reviewer(Agent):
     def __init__(self, model="llama3.2", temperature=1.2):
         super().__init__(model, temperature)
         self.system_instructions = ""
 
-    def review(self, reward, model_name, model_params, metrics):
+    def review(self, feedback):
+        
         prompt = f"""
-                  """
-        return self.chat(prompt)
+                Considere as tentativas anteriores. Tentando classificar a mesma base de dados com o classificador {feedback["classifier"]} e os parâmetros {feedback["params"]} obteve-se os seguintes resultados:
+                F1: {feedback["f1"]}
+                Recall: {feedback["recall"]}
+                Precisão: {feedback["precision"]}
+                Acurácia: {feedback["accuracy"]}
+                
+                Dê uma nota de 0 a 10 para esse classificador. A NOTA PRECISA SER UM INTEIRO DE 0 A 10
+                Com base nos resultados obtidos, o que você sugere que seja alterado? Escolha entre as seguintes opções:
+                - Alterar o classificador
+                - Alterar os parâmetros
+                - Alterar a normalização
+                """
+        response = self.chat(prompt, format=ReviewerResponses.model_json_schema())
+        response = ReviewerResponses.model_validate_json(response)
+        
+        return response
 
-wine_df = load_wine()
-X = wine_df.data
-y = wine_df.target
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+if __name__ == "__main__":
+    wine_df = load_wine()
+    X = wine_df.data
+    y = wine_df.target
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
-coder = Coder(X_train, y_train)
-coder.set_classifier()
-coder.set_params()
+    coder = Coder(X_train, y_train)
+    coder.set_classifier()
+    coder.set_params()
 
-coder.fit(X_train, y_train)
-y_pred = coder.predict(X_test)
-print(y_pred)
+    coder.fit(X_train, y_train)
+    y_pred = coder.predict(X_test)
+    print(y_pred)
