@@ -1,7 +1,8 @@
+from pprint import pprint
+from typing import List, Optional, Literal
+
 from ollama import chat
 from pydantic import BaseModel, Field, field_validator
-from typing import List, Optional, Literal
-from pprint import pprint
 
 from sklearn.svm import SVC
 from sklearn.linear_model import LogisticRegression
@@ -68,11 +69,16 @@ class Agent:
         self.temperature = temperature
         self.history = []
         self.system_instructions = ""
+        self.max_history = 10
 
     def chat(self, message, format="plain"):
         self.history.append({
             "role": "user",
-            "content": f"{self.system_instructions} {message}"
+            "content": f"""
+                        {self.system_instructions}
+                             
+                        {message}
+                        """
         })
         response = chat(
             model=self.model,
@@ -81,7 +87,7 @@ class Agent:
             options={"temperature": self.temperature}
         )
         self.history.append(response["message"])
-        if len(self.history) > 10:
+        if len(self.history) > self.max_history:
             self.history.pop(0)
         return response["message"]["content"]
 
@@ -140,6 +146,16 @@ class Coder(Agent):
 
     def predict(self, X):
         return self.classifier.predict(X)
+    
+class Reviewer(Agent):
+    def __init__(self, model="llama3.2", temperature=1.2):
+        super().__init__(model, temperature)
+        self.system_instructions = ""
+
+    def review(self, reward, model_name, model_params, metrics):
+        prompt = f"""
+                  """
+        return self.chat(prompt)
 
 wine_df = load_wine()
 X = wine_df.data
