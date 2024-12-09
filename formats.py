@@ -1,5 +1,5 @@
 from typing import Literal, Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from sklearn.svm import SVC
 from sklearn.linear_model import LogisticRegression
@@ -44,8 +44,9 @@ class KNNParams(BaseModel):
     algorithm: Literal["auto", "ball_tree", "kd_tree", "brute"] = "auto"
 
 class ReviewerResponses(BaseModel):
-    suggestion: str
-    grade: int
+    suggestion: Literal["Troque o classificador", "Troque os parâmetros"]
+    elaborate: str
+    grade: int = Field(ge=0, le=10)
     
 CLASSIFIERS = {
 "SVM": SVC,
