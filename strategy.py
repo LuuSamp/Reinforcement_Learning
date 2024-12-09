@@ -19,8 +19,8 @@ class EpsilonGreedyDecay:
         
         self.step += 1
             
-        # if self.epsilon < self.end:
-        #     self.epsilon = self.end
+        if self.epsilon < self.end:
+            self.epsilon = self.end
         return self.epsilon
     
     def get_action(self, q_values):

@@ -144,6 +144,7 @@ class Coder(Agent):
     
     def act(self):
         self.last_action = self.strategy.get_action(self.q_values)
+        self.epsilon = self.strategy.epsilon
         self.actions[self.last_action]()
     
     def get_reward(self, reward):
@@ -164,6 +165,7 @@ class Reviewer(Agent):
                 Recall: {feedback["recall"]}
                 Precisão: {feedback["precision"]}
                 Acurácia: {feedback["accuracy"]}
+                Tempo de treinamento: {feedback["training_time"]}
                 
                 Dê uma nota de 0 a 10 para esse classificador. A NOTA PRECISA SER UM INTEIRO DE 0 A 10
                 Com base nos resultados obtidos, o que você sugere que seja alterado? Escolha entre as seguintes opções:

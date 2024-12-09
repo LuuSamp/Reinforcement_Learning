@@ -19,7 +19,8 @@ class Environment:
             "recall": [],
             "precision": [],
             "accuracy": [],
-            "reward": []
+            "reward": [],
+            "params": []
         }
         self.model_history = []
     
@@ -29,31 +30,38 @@ class Environment:
             self.evaluator.set_classifier(self.coder.classifier_name, self.coder.params)
             start_time = time()
             response = self.evaluator.respond()
-            response["time"] = time() - start_time
-            response["reviewer_feedback"] = self.reviewer.review(response).grade
-            response["reviewer_suggestion"] = self.reviewer.review(response).suggestion
-            response["reviewer_elaborate"] = self.reviewer.review(response).elaborate
+            training_time = time() - start_time
+            response["training_time"] = training_time
+            reviewer_response = self.reviewer.review(response)
+            response["reviewer_feedback"] = reviewer_response.grade
+            response["reviewer_suggestion"] = reviewer_response.suggestion
+            response["reviewer_elaborate"] = reviewer_response.elaborate
             self.coder.get_feedback(response)
-            self.coder.get_reward(response["reviewer_feedback"] - 0.01*response["time"])
+            reward = response["reviewer_feedback"] - 0.01*training_time
+            self.coder.get_reward(reward)
         except:
-            response = {"f1": "NaN", "recall": "NaN", "precision": "NaN", "accuracy": "NaN", "reviewer_feedback": 0, "reviewer_suggestion": "Parâmetros inválidos"} 
+            response = {"f1": "NaN", "recall": "NaN", "precision": "NaN", "accuracy": "NaN", 
+                        "reviewer_feedback": 0, 
+                        "reviewer_suggestion": "Parâmetros inválidos", 
+                        "reviewer_elaborate": "Parâmetros inválidos! OCORREU UM ERRO NA EXECUÇÃO!"} 
             self.coder.get_feedback(response)
-            self.coder.get_reward(-1)
-            return response
+            reward = -1
+            self.coder.get_reward(reward)
+            return reward
 
         self.history["f1"].append(response["f1"])
         self.history["recall"].append(response["recall"])
         self.history["precision"].append(response["precision"])
         self.history["accuracy"].append(response["accuracy"])
         self.history["model"].append(self.coder.classifier_name)
-        self.history["reward"].append(response["reviewer_feedback"])
+        self.history["params"].append(self.coder.params)
         
-        return response
+        return reward
     
     def run(self, epochs = 10):
         for i in tqdm(range(epochs)):
-            response = self.step()
-            reward = response["reviewer_feedback"]
+            reward = self.step()
+            self.history["reward"].append(reward)
             self.coder.get_reward(reward)
         return self.history
     
