@@ -8,9 +8,10 @@ from formats import *
 from sklearn.datasets import load_wine
 from sklearn.model_selection import train_test_split
 from random import random
+from strategy import EpsilonGreedyDecay
 
 class Agent:
-    def __init__(self, model="llama3.2", temperature=1.0):
+    def __init__(self, model="llama3.2", temperature=1.0, strategy = EpsilonGreedyDecay()):
         self.model = model
         self.temperature = temperature
         self.history = [
@@ -20,7 +21,8 @@ class Agent:
             }
         ]
         self.system_instructions = ""
-        self.max_history = 10
+        self.max_history = 3*5
+        self.strategy = strategy
 
     def chat(self, message, format="plain"):
         self.history.append({
@@ -43,8 +45,8 @@ class Agent:
         return response["message"]["content"]
 
 class Coder(Agent):
-    def __init__(self, X, y, model="llama3.2", temperature=1.2):
-        super().__init__(model, temperature)
+    def __init__(self, X, y, model="llama3.2", temperature=1.2, strategy = EpsilonGreedyDecay()):
+        super().__init__(model, temperature, strategy)
         self.X = X
         self.y = y
         self.X_copy = X.copy()
@@ -52,7 +54,13 @@ class Coder(Agent):
         self.classifier = CLASSIFIERS[self.classifier_name]
         self.params = CLASSIFIERS_PARAMS[self.classifier_name]().model_dump()
         self.latest_feedback = ""
-        self.epsilon = 0.05
+        self.epsilon = strategy.epsilon
+        self.actions = {
+            "set_classifier": self.set_classifier,
+            "set_params": self.set_params,
+        }
+        self.q_values = {action: 0 for action in self.actions.keys()}
+        self.last_action : Literal["set_classifier", "set_params"] = "set_classifier"
 
     def set_classifier(self):
         
@@ -91,6 +99,7 @@ class Coder(Agent):
         else:          
             prompt = f""" Com base nos resultados anteriores, escolha os seguintes parâmetros para o classificador {self.classifier_name}:
                             {' '.join(CLASSIFIERS_PARAMS[self.classifier_name].model_json_schema().keys())}
+                            Se as métricas de avaliação não foram satisfatórias, escolha parâmetros diferentes.
                     """
         
         response = self.chat(prompt, format=CLASSIFIERS_PARAMS[self.classifier_name].model_json_schema())
@@ -116,11 +125,9 @@ class Coder(Agent):
                         Dados do último teste:
                         - Classificador: {self.classifier_name}
                         - Parâmetros: {self.params}
-                        - F1: {feedback["f1"]}
-                        - Recall: {feedback["recall"]}
-                        - Precisão: {feedback["precision"]}
-                        - Acurácia: {feedback["accuracy"]}
                         - Nota do revisor: {feedback["reviewer_feedback"]}
+                        - Sugestão do revisor: {feedback["reviewer_suggestion"]}
+                        - Elaboração do revisor: {feedback["reviewer_elaborate"]}
                         """
         self.latest_feedback = feedback_text
         feedback = {
@@ -134,6 +141,15 @@ class Coder(Agent):
         if len(self.history) > self.max_history+1:
             self.history.pop(1)
         self.history.append(feedback)
+    
+    def act(self):
+        self.last_action = self.strategy.get_action(self.q_values)
+        self.actions[self.last_action]()
+    
+    def get_reward(self, reward):
+        self.q_values = self.strategy.update_q_values(self.q_values, self.last_action, reward, 0.1)
+        
+        return self.q_values
     
 class Reviewer(Agent):
     def __init__(self, model="llama3.2", temperature=1.2):
@@ -153,7 +169,7 @@ class Reviewer(Agent):
                 Com base nos resultados obtidos, o que você sugere que seja alterado? Escolha entre as seguintes opções:
                 - Alterar o classificador
                 - Alterar os parâmetros
-                - Alterar a normalização
+                Elabore sua resposta
                 """
         response = self.chat(prompt, format=ReviewerResponses.model_json_schema())
         response = ReviewerResponses.model_validate_json(response)
