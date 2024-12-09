@@ -4,6 +4,7 @@ from sklearn.datasets import load_wine
 # Import the InvalidParameterError from the sklearn module
 from sklearn.utils._param_validation import InvalidParameterError
 from time import time
+from tqdm import tqdm
 
 class Environment:
     def __init__(self, X, y):
@@ -50,7 +51,7 @@ class Environment:
         return response
     
     def run(self, epochs = 10):
-        for i in range(epochs):
+        for i in tqdm(range(epochs)):
             response = self.step()
             reward = response["reviewer_feedback"]
             self.coder.get_reward(reward)
